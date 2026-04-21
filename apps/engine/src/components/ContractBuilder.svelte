@@ -48,12 +48,15 @@
   let draftStreams  = $state<Stream[]>(JSON.parse(JSON.stringify(store.contract?.streams ?? [])));
   let selectedId   = $state<string | null>(draftStreams[0]?.id ?? null);
   let mappingActive = $state(false);
+  let tableMappingActive = $state(false);
+  let tableMappingHint = $state(false);
 
   const selectedStream = $derived(draftStreams.find(s => s.id === selectedId) ?? null);
 
   function selectStream(id: string) {
     selectedId = id;
     mappingActive = false;
+    tableMappingActive = false;
   }
 
   function patchSelected(patch: Partial<Stream>) {
@@ -82,6 +85,15 @@
       return;
     }
 
+    if (tableMappingActive && (selectedStream?.kind === 'table' || selectedStream?.kind === 'log')) {
+      const current = selectedStream.fields ?? [];
+      const next = current.includes(f.field)
+        ? current.filter(x => x !== f.field)
+        : [...current, f.field];
+      patchSelected({ fields: next.length ? next : undefined });
+      return;
+    }
+
     if (f.valueType === 'number') {
       const s: Stream = {
         id: crypto.randomUUID(),
@@ -96,6 +108,10 @@
       };
       draftStreams = [...draftStreams, s];
       selectedId = s.id;
+    } else {
+      // Non-numeric field: hint user to use Table → or Log →
+      tableMappingHint = true;
+      setTimeout(() => { tableMappingHint = false; }, 2500);
     }
   }
 
@@ -138,6 +154,43 @@
     draftStreams = [...draftStreams, s];
     selectedId = s.id;
     mappingActive = true;
+    tableMappingActive = false;
+  }
+
+  function addBlankTable() {
+    if (!selectedPipeline) return;
+    const s: Stream = {
+      id: crypto.randomUUID(),
+      label: `${selectedPipeline.name} · output`,
+      kind: 'table',
+      transport: 'poll',
+      endpoint: `${baseUrl}/api/pipelines/${selectedPipeline.slug}/runs?limit=15`,
+      interval: 10_000,
+      span: 4,
+      fields: [],
+    };
+    draftStreams = [...draftStreams, s];
+    selectedId = s.id;
+    tableMappingActive = true;
+    mappingActive = false;
+  }
+
+  function addBlankLog() {
+    if (!selectedPipeline) return;
+    const s: Stream = {
+      id: crypto.randomUUID(),
+      label: `${selectedPipeline.name} · log`,
+      kind: 'log',
+      transport: 'poll',
+      endpoint: `${baseUrl}/api/pipelines/${selectedPipeline.slug}/runs?limit=50`,
+      interval: 10_000,
+      span: 4,
+      fields: [],
+    };
+    draftStreams = [...draftStreams, s];
+    selectedId = s.id;
+    tableMappingActive = true;
+    mappingActive = false;
   }
 
   function resetToSuggested() {
@@ -169,6 +222,7 @@
     { value: 'table',      label: 'Table' },
     { value: 'scalar',     label: 'Scalar' },
     { value: 'raw',        label: 'Raw' },
+    { value: 'log',        label: 'Log Feed' },
   ];
 
   const KIND_COLOR: Record<StreamKind, string> = {
@@ -177,6 +231,7 @@
     table:      '#a78bfa',
     scalar:     '#f59e0b',
     raw:        '#6b7280',
+    log:        '#34d399',
   };
 </script>
 
@@ -220,6 +275,10 @@
         <div class="fields-scroll">
           {#if mappingActive}
             <div class="mapping-banner">← Click a field to map</div>
+          {:else if tableMappingActive}
+            <div class="mapping-banner mapping-banner--table">← Toggle columns for table/log</div>
+          {:else if tableMappingHint}
+            <div class="mapping-banner mapping-banner--hint">Use + Table → or + Log → first</div>
           {/if}
 
           {#if loadingFields}
@@ -231,12 +290,19 @@
               <button
                 class="field-row"
                 class:field-row--mappable={mappingActive && f.valueType === 'number'}
+                class:field-row--table-pick={tableMappingActive}
+                class:field-row--selected={tableMappingActive && (selectedStream?.fields ?? []).includes(f.field)}
                 onclick={() => handleFieldClick(f)}
-                title={f.valueType === 'number' ? 'Add as timeseries stream' : f.valueType}
+                title={mappingActive && f.valueType === 'number' ? 'Add as timeseries stream' : tableMappingActive ? 'Toggle column' : `${f.valueType} — activate Table → or Log → to use`}
               >
-                <span class="field-dot" style:background={f.valueType === 'number' ? '#22d3ee' : '#6b7280'}></span>
+                <span class="field-dot" style:background={
+                  f.valueType === 'number'  ? '#22d3ee' :
+                  f.valueType === 'string'  ? '#f59e0b' :
+                  f.valueType === 'boolean' ? '#34d399' : '#6b7280'
+                }></span>
                 <span class="field-name">{f.field}</span>
                 {#if f.unit}<span class="field-unit">{f.unit}</span>{/if}
+                <span class="field-type">{f.valueType === 'number' ? 'num' : f.valueType === 'string' ? 'str' : f.valueType === 'boolean' ? 'bool' : '?'}</span>
                 <span class="field-sample">{String(f.sampleValue).slice(0, 10)}</span>
               </button>
             {/each}
@@ -247,6 +313,8 @@
           <button class="quick-btn" disabled={!selectedPipeline} onclick={() => addPreset('status')}>+ Status</button>
           <button class="quick-btn" disabled={!selectedPipeline} onclick={() => addPreset('table')}>+ History</button>
           <button class="quick-btn quick-btn--ts" disabled={!selectedPipeline} onclick={() => addBlankTimeseries()}>+ Series →</button>
+          <button class="quick-btn quick-btn--tbl" disabled={!selectedPipeline} onclick={() => addBlankTable()}>+ Table →</button>
+          <button class="quick-btn quick-btn--log" disabled={!selectedPipeline} onclick={() => addBlankLog()}>+ Log →</button>
         </div>
 
       </div>
@@ -313,12 +381,42 @@
                 <button
                   class="map-btn"
                   class:map-btn--active={mappingActive}
-                  onclick={() => { mappingActive = !mappingActive; }}
+                  onclick={() => { mappingActive = !mappingActive; tableMappingActive = false; }}
                   title="Click then pick a field from the left panel"
                 >
                   <span class="map-field">{getStreamField(selectedStream) || 'none'}</span>
                   <span class="map-hint">{mappingActive ? '← select' : '↖ map'}</span>
                 </button>
+              </div>
+            {/if}
+
+            {#if selectedStream.kind === 'table' || selectedStream.kind === 'log'}
+              <div class="form-row form-row--top">
+                <label class="form-label">{selectedStream.kind === 'log' ? 'Fields' : 'Columns'}</label>
+                <div class="col-editor">
+                  <button
+                    class="map-btn"
+                    class:map-btn--active={tableMappingActive}
+                    onclick={() => { tableMappingActive = !tableMappingActive; mappingActive = false; }}
+                  >
+                    <span class="map-hint">{tableMappingActive ? '← toggle' : '↖ pick output fields'}</span>
+                  </button>
+                  {#if (selectedStream.fields ?? []).length > 0}
+                    <div class="col-chips">
+                      {#each selectedStream.fields ?? [] as f}
+                        <span class="col-chip">
+                          {f}
+                          <button class="chip-del" onclick={() => {
+                            const next = (selectedStream.fields ?? []).filter(x => x !== f);
+                            patchSelected({ fields: next.length ? next : undefined });
+                          }}>×</button>
+                        </span>
+                      {/each}
+                    </div>
+                  {:else}
+                    <span class="col-hint">{selectedStream.kind === 'log' ? 'pick a field as message' : 'no custom columns — shows run history'}</span>
+                  {/if}
+                </div>
               </div>
             {/if}
 
@@ -514,6 +612,16 @@
     padding: 6px 12px;
     flex-shrink: 0;
   }
+  .mapping-banner--table {
+    background: rgba(167, 139, 250, 0.1);
+    border-bottom-color: rgba(167, 139, 250, 0.25);
+    color: #a78bfa;
+  }
+  .mapping-banner--hint {
+    background: rgba(245, 158, 11, 0.08);
+    border-bottom-color: rgba(245, 158, 11, 0.2);
+    color: var(--warn);
+  }
 
   .fields-scroll {
     flex: 1;
@@ -535,6 +643,11 @@
   .field-row:hover { background: var(--bg-card-h); }
   .field-row--mappable { cursor: crosshair; }
   .field-row--mappable:hover { background: rgba(99, 102, 241, 0.1); }
+  .field-row--table-pick { cursor: pointer; }
+  .field-row--table-pick:hover { background: rgba(167, 139, 250, 0.08); }
+  .field-row--selected { background: rgba(167, 139, 250, 0.12); }
+  .field-row--selected .field-name { color: #a78bfa; }
+  .field-row--selected::after { content: '✓'; font-size: 10px; color: #a78bfa; margin-left: auto; padding-right: 4px; }
 
   .field-dot {
     width: 6px;
@@ -559,6 +672,14 @@
     color: var(--accent-2);
     font-family: var(--font-mono);
     flex-shrink: 0;
+  }
+
+  .field-type {
+    font-size: 9px;
+    color: var(--tx-3);
+    font-family: var(--font-mono);
+    flex-shrink: 0;
+    opacity: 0.6;
   }
 
   .field-sample {
@@ -592,6 +713,10 @@
   .quick-btn:disabled { opacity: 0.35; cursor: default; }
   .quick-btn--ts { color: var(--accent-2); border-color: rgba(99,102,241,0.3); }
   .quick-btn--ts:hover:not(:disabled) { background: rgba(99,102,241,0.08); }
+  .quick-btn--tbl { color: #a78bfa; border-color: rgba(167,139,250,0.3); }
+  .quick-btn--tbl:hover:not(:disabled) { background: rgba(167,139,250,0.08); }
+  .quick-btn--log { color: #34d399; border-color: rgba(52,211,153,0.3); }
+  .quick-btn--log:hover:not(:disabled) { background: rgba(52,211,153,0.08); }
 
   /* ── Right: streams ─────────────────────────────────────────────────────── */
 
@@ -798,6 +923,53 @@
   }
   .apply-btn:hover { background: var(--accent-2); }
   .apply-btn:disabled { opacity: 0.35; cursor: default; }
+
+  .form-row--top { align-items: flex-start; }
+
+  .col-editor {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .col-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .col-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(167, 139, 250, 0.1);
+    border: 1px solid rgba(167, 139, 250, 0.25);
+    border-radius: var(--r-sm);
+    color: #a78bfa;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    padding: 2px 6px;
+  }
+
+  .chip-del {
+    background: none;
+    border: none;
+    color: #a78bfa;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    padding: 0;
+    opacity: 0.6;
+  }
+  .chip-del:hover { opacity: 1; color: var(--fail); }
+
+  .col-hint {
+    font-size: 11px;
+    color: var(--tx-3);
+    font-style: italic;
+  }
 
   /* ── Utilities ───────────────────────────────────────────────────────────── */
 

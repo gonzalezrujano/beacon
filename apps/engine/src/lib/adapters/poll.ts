@@ -5,6 +5,34 @@ import type { Stream } from '@beacon/contract';
 import { store } from '../store.svelte';
 import { transform } from './transform';
 
+function needsOutputEnrichment(stream: Stream): boolean {
+  return (stream.kind === 'table' || stream.kind === 'log') && !!stream.fields?.length;
+}
+
+async function enrichWithOutput(runsUrl: string, raw: unknown): Promise<unknown> {
+  if (!raw || typeof raw !== 'object') return raw;
+  const d = raw as Record<string, unknown>;
+  if (!Array.isArray(d.runs)) return raw;
+
+  const baseRunUrl = runsUrl.split('?')[0];
+  const runs = d.runs as Array<{ run_id: string }>;
+
+  const enriched = await Promise.all(
+    runs.map(async (run) => {
+      try {
+        const res = await fetch(`${baseRunUrl}/${run.run_id}`, { cache: 'no-store' });
+        if (!res.ok) return run;
+        const detail = await res.json() as Record<string, unknown>;
+        return { ...run, output: detail.output ?? {} };
+      } catch {
+        return run;
+      }
+    })
+  );
+
+  return { ...d, runs: enriched };
+}
+
 export type StopFn = () => void;
 
 export function pollStream(stream: Stream, baseUrl = ''): StopFn {
@@ -24,8 +52,9 @@ export function pollStream(stream: Stream, baseUrl = ''): StopFn {
         store.recordPollError(stream.id, `HTTP ${res.status}`);
         return;
       }
-      const raw = await res.json();
-      const data = transform(stream.kind, raw);
+      let raw = await res.json();
+      if (needsOutputEnrichment(stream)) raw = await enrichWithOutput(url, raw);
+      const data = transform(stream, raw);
       if (data) store.updateStream(stream.id, data);
       store.recordPollSuccess(stream.id, latencyMs);
     } catch (e) {

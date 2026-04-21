@@ -2,8 +2,8 @@
 // Handles both Beacon-native responses and Shelby API format.
 
 import type {
-  StreamKind, StreamData,
-  TimeseriesData, StatusData, TableData, ScalarData, RawData,
+  Stream, StreamData,
+  TimeseriesData, StatusData, TableData, ScalarData, RawData, LogData, LogLine,
 } from '@beacon/contract';
 
 type ShelbyRun = {
@@ -17,8 +17,9 @@ type ShelbyRun = {
   error?: string;
 };
 
-export function transform(kind: StreamKind, raw: unknown): StreamData | null {
+export function transform(stream: Stream, raw: unknown): StreamData | null {
   if (!raw || typeof raw !== 'object') return null;
+  const { kind, fields } = stream;
   const d = raw as Record<string, unknown>;
 
   // ── Already Beacon-shaped ─────────────────────────────────────────────────
@@ -48,21 +49,46 @@ export function transform(kind: StreamKind, raw: unknown): StreamData | null {
       return data;
     }
 
+    if (kind === 'log' && fields?.length) {
+      const msgField = fields[0];
+      const levelField = fields[1] as string | undefined;
+      const lines: LogLine[] = runs
+        .filter(r => (r as Record<string, unknown>).output != null)
+        .map(r => {
+          const output = (r as Record<string, unknown>).output as Record<string, unknown>;
+          const msg = output[msgField] != null ? String(output[msgField]) : '';
+          const rawLevel = levelField ? String(output[levelField] ?? '') : msg;
+          return {
+            t: r.started_at,
+            level: inferLogLevel(rawLevel),
+            msg,
+            run_id: r.run_id,
+          };
+        })
+        .filter(l => l.msg !== '')
+        .reverse();
+      return { kind: 'log', lines } satisfies LogData;
+    }
+
     if (kind === 'table') {
-      const data: TableData = {
-        kind: 'table',
-        rows: runs.map(r => ({
-          run_id:     r.run_id,
-          status:     r.status,
-          started_at: r.started_at,
-          duration:   r.duration ?? '—',
-          steps:      r.steps_total !== undefined
-                        ? `${r.steps_ok ?? '?'}/${r.steps_total}`
-                        : '—',
-          ...(r.error ? { error: r.error } : {}),
-        })),
-        total: runs.length,
-      };
+      const rows = fields?.length
+        ? runs.map(r => {
+            const output = (r as Record<string, unknown>).output as Record<string, unknown> ?? {};
+            const row: Record<string, unknown> = { run_id: r.run_id, started_at: r.started_at };
+            for (const f of fields) row[f] = output[f] ?? null;
+            return row;
+          })
+        : runs.map(r => ({
+            run_id:     r.run_id,
+            status:     r.status,
+            started_at: r.started_at,
+            duration:   r.duration ?? '—',
+            steps:      r.steps_total !== undefined
+                          ? `${r.steps_ok ?? '?'}/${r.steps_total}`
+                          : '—',
+            ...(r.error ? { error: r.error } : {}),
+          }));
+      const data: TableData = { kind: 'table', rows, total: runs.length };
       return data;
     }
   }
@@ -90,4 +116,12 @@ export function transform(kind: StreamKind, raw: unknown): StreamData | null {
   // (array of pipelineView) — not a stream kind, handled upstream
 
   return null;
+}
+
+function inferLogLevel(s: string): LogLine['level'] {
+  const l = s.toLowerCase();
+  if (/\berror\b|fail|exception|critical|crit/.test(l)) return 'error';
+  if (/\bwarn/.test(l)) return 'warn';
+  if (/\bdebug\b|trace|verbose/.test(l)) return 'debug';
+  return 'info';
 }

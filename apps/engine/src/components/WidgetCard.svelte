@@ -8,6 +8,7 @@
   import StatusGrid from './widgets/StatusGrid.svelte';
   import Table from './widgets/Table.svelte';
   import RawJson from './widgets/RawJson.svelte';
+  import LogFeed from './widgets/LogFeed.svelte';
 
   let { instance, stream, data }: { instance: WidgetInstance; stream: Stream; data: StreamData | undefined } = $props();
 
@@ -307,6 +308,8 @@
       <StatusGrid data={transformedData} />
     {:else if effectiveKind === 'table' && transformedData.kind === 'table'}
       <Table data={transformedData} />
+    {:else if effectiveKind === 'log' && transformedData.kind === 'log'}
+      <LogFeed data={transformedData} />
     {:else}
       <div class="empty">incompatible</div>
     {/if}

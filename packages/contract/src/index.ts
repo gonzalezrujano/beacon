@@ -1,7 +1,7 @@
 // Beacon Canonical Contract v1
 // Any data source that implements this contract gets dashboards for free.
 
-export type StreamKind = 'timeseries' | 'scalar' | 'table' | 'status' | 'raw';
+export type StreamKind = 'timeseries' | 'scalar' | 'table' | 'status' | 'raw' | 'log';
 export type TransportKind = 'poll' | 'ws' | 'sse';
 
 export interface StreamSchema {
@@ -27,6 +27,7 @@ export interface Stream {
   description?: string;
   span?: 1 | 2 | 3 | 4;
   thresholds?: StreamThresholds;
+  fields?: string[];
 }
 
 export interface BeaconContract {
@@ -94,4 +95,16 @@ export interface RawData {
   label?: string;
 }
 
-export type StreamData = TimeseriesData | TableData | ScalarData | StatusData | RawData;
+export interface LogLine {
+  t: string;
+  level?: 'debug' | 'info' | 'warn' | 'error';
+  msg: string;
+  [k: string]: unknown;
+}
+
+export interface LogData {
+  kind: 'log';
+  lines: LogLine[];
+}
+
+export type StreamData = TimeseriesData | TableData | ScalarData | StatusData | RawData | LogData;
