@@ -54,17 +54,33 @@ function loadHiddenInstances(): Set<string> {
 }
 
 class BeaconStore {
-  contract         = $state<BeaconContract | null>(null);
-  streams          = $state<Record<string, StreamData>>({});
-  pollMeta         = $state<Record<string, PollMeta>>({});
-  status           = $state<ConnectionStatus>('disconnected');
-  error            = $state<string | null>(null);
-  widgetConfigs    = $state<Record<string, Partial<WidgetConfig>>>(loadWidgetConfigs());
-  layoutMode       = $state<'auto' | 'custom'>('auto');
-  isEditing        = $state(false);
-  layout           = $state<DashboardLayout>({ instances: [], spans: {} });
-  templates        = $state<DashboardTemplate[]>(loadTemplates());
-  hiddenInstances  = $state<Set<string>>(loadHiddenInstances());
+  contract               = $state<BeaconContract | null>(null);
+  autoDiscoveredContract = $state<BeaconContract | null>(null);
+  currentBaseUrl         = $state<string | null>(null);
+  streams                = $state<Record<string, StreamData>>({});
+  pollMeta               = $state<Record<string, PollMeta>>({});
+  status                 = $state<ConnectionStatus>('disconnected');
+  error                  = $state<string | null>(null);
+  widgetConfigs          = $state<Record<string, Partial<WidgetConfig>>>(loadWidgetConfigs());
+  layoutMode             = $state<'auto' | 'custom'>('auto');
+  isEditing              = $state(false);
+  layout                 = $state<DashboardLayout>({ instances: [], spans: {} });
+  templates              = $state<DashboardTemplate[]>(loadTemplates());
+  hiddenInstances        = $state<Set<string>>(loadHiddenInstances());
+
+  setBaseUrl(url: string | null) { this.currentBaseUrl = url; }
+  setAutoDiscoveredContract(c: BeaconContract) { this.autoDiscoveredContract = c; }
+
+  saveCustomContract(baseUrl: string, contract: BeaconContract): void {
+    try { localStorage.setItem(`beacon:customContract:${baseUrl}`, JSON.stringify(contract)); } catch {}
+  }
+
+  loadCustomContract(baseUrl: string): BeaconContract | null {
+    try {
+      const raw = localStorage.getItem(`beacon:customContract:${baseUrl}`);
+      return raw ? (JSON.parse(raw) as BeaconContract) : null;
+    } catch { return null; }
+  }
 
   setContract(c: BeaconContract) {
     this.contract = c;

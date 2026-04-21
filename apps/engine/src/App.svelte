@@ -3,12 +3,14 @@
   import Dashboard from './components/Dashboard.svelte';
   import BeaconLogo from './components/ui/BeaconLogo.svelte';
   import TemplatesPanel from './components/TemplatesPanel.svelte';
+  import ContractBuilder from './components/ContractBuilder.svelte';
   import { store } from './lib/store.svelte';
   import { loadMock, startMockLive } from './lib/mock';
   import { connectShelby, connectContract, stopShelby } from './lib/adapters/shelby';
 
   let srcInput = $state('');
   let showTemplates = $state(false);
+  let showContractBuilder = $state(false);
 
   onMount(() => {
     const src = new URLSearchParams(location.search).get('src') ?? '';
@@ -98,6 +100,22 @@
           </button>
         {/if}
 
+        {#if store.currentBaseUrl}
+          <button
+            class="icon-btn"
+            class:icon-btn--active={showContractBuilder}
+            title="Contract Builder"
+            onclick={() => showContractBuilder = !showContractBuilder}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="4" cy="4" r="1.5" stroke="currentColor" stroke-width="1.3"/>
+              <circle cx="4" cy="12" r="1.5" stroke="currentColor" stroke-width="1.3"/>
+              <circle cx="12" cy="8" r="1.5" stroke="currentColor" stroke-width="1.3"/>
+              <path d="M5.5 4h7M5.5 12h7M1 8h9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            </svg>
+          </button>
+        {/if}
+
         <button class="icon-btn" class:icon-btn--active={showTemplates} title="Templates" onclick={() => showTemplates = !showTemplates}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M2 3h12M2 8h12M2 13h7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
@@ -114,6 +132,10 @@
 
   {#if showTemplates}
     <TemplatesPanel onclose={() => showTemplates = false} />
+  {/if}
+
+  {#if showContractBuilder && store.currentBaseUrl}
+    <ContractBuilder baseUrl={store.currentBaseUrl} onclose={() => showContractBuilder = false} />
   {/if}
 
 {:else}
