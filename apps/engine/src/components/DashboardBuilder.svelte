@@ -323,14 +323,20 @@
   // Stable preview data — only regenerate when stream kind/unit changes
   let previewDataCache = $state<Record<string, StreamData>>({});
 
-  const previewData = $derived((() => {
-    if (!selectedStream) return null;
-    const key = `${selectedStream.id}:${selectedStream.kind}:${selectedStream.unit ?? ''}`;
-    if (!previewDataCache[key]) {
-      previewDataCache = { ...previewDataCache, [key]: mockPreviewData(selectedStream) };
+  const previewKey = $derived(
+    selectedStream ? `${selectedStream.id}:${selectedStream.kind}:${selectedStream.unit ?? ''}` : null
+  );
+
+  $effect(() => {
+    if (!selectedStream || !previewKey) return;
+    if (!previewDataCache[previewKey]) {
+      previewDataCache = { ...previewDataCache, [previewKey]: mockPreviewData(selectedStream) };
     }
-    return previewDataCache[key];
-  })());
+  });
+
+  const previewData = $derived(
+    previewKey ? (previewDataCache[previewKey] ?? null) : null
+  );
 
   // ── Kind metadata ──────────────────────────────────────────────────────────
 
