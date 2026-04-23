@@ -1,14 +1,9 @@
 <script lang="ts">
-  import type { Stream, StreamData, StreamThresholds, RawData } from '@beacon/contract';
+  import type { Stream, StreamData, StreamThresholds } from '@beacon/contract';
   import { store, type WidgetInstance } from '../lib/store.svelte';
   import type { WidgetConfig, WidgetTransformConfig } from '../lib/widgetConfig';
   import { applyTransforms, hasTransforms } from '../lib/transforms';
-  import Timeseries from './widgets/Timeseries.svelte';
-  import Scalar from './widgets/Scalar.svelte';
-  import StatusGrid from './widgets/StatusGrid.svelte';
-  import Table from './widgets/Table.svelte';
-  import RawJson from './widgets/RawJson.svelte';
-  import LogFeed from './widgets/LogFeed.svelte';
+  import { getWidget } from '../lib/widgetRegistry';
 
   let { instance, stream, data }: { instance: WidgetInstance; stream: Stream; data: StreamData | undefined } = $props();
 
@@ -19,8 +14,10 @@
 
   const config = $derived(store.getWidgetConfig(instance.id));
 
+  const widgetDef = $derived(getWidget(effectiveKind));
+
   const hasConfig = $derived(
-    effectiveKind === 'timeseries' || effectiveKind === 'scalar' || effectiveKind === 'table'
+    !!widgetDef && (widgetDef.meta.hasDisplayConfig || widgetDef.meta.hasTransformConfig)
   );
 
   const effectiveThresholds = $derived<StreamThresholds | undefined>(
@@ -35,8 +32,10 @@
 
   const transformActive = $derived(hasTransforms(config.transforms));
 
-  const rawViewData = $derived<RawData | undefined>(
-    data ? { kind: 'raw', data } : undefined
+  const renderedProps = $derived(
+    widgetDef && transformedData
+      ? widgetDef.buildProps(transformedData, stream, config, effectiveThresholds)
+      : undefined
   );
 
   function set<K extends keyof WidgetConfig>(key: K, val: WidgetConfig[K]) {
@@ -298,18 +297,8 @@
   <div class="card-body">
     {#if !transformedData}
       <div class="skeleton"></div>
-    {:else if effectiveKind === 'raw'}
-      <RawJson data={rawViewData!} />
-    {:else if effectiveKind === 'timeseries' && transformedData.kind === 'timeseries'}
-      <Timeseries data={transformedData} unit={stream.unit ?? ''} thresholds={effectiveThresholds} {config} />
-    {:else if effectiveKind === 'scalar' && transformedData.kind === 'scalar'}
-      <Scalar data={transformedData} thresholds={effectiveThresholds} {config} />
-    {:else if effectiveKind === 'status' && transformedData.kind === 'status'}
-      <StatusGrid data={transformedData} />
-    {:else if effectiveKind === 'table' && transformedData.kind === 'table'}
-      <Table data={transformedData} />
-    {:else if effectiveKind === 'log' && transformedData.kind === 'log'}
-      <LogFeed data={transformedData} />
+    {:else if widgetDef && renderedProps}
+      <svelte:component this={widgetDef.component} {...renderedProps} />
     {:else}
       <div class="empty">incompatible</div>
     {/if}

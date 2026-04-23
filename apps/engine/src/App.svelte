@@ -4,13 +4,16 @@
   import BeaconLogo from './components/ui/BeaconLogo.svelte';
   import TemplatesPanel from './components/TemplatesPanel.svelte';
   import DashboardBuilder from './components/DashboardBuilder.svelte';
+  import PluginManager from './components/PluginManager.svelte';
   import { store } from './lib/store.svelte';
+  import './lib/widgetRegistrations';
   import { loadMock, startMockLive } from './lib/mock';
   import { connectShelby, connectContract, stopShelby } from './lib/adapters/shelby';
 
   let srcInput = $state('');
   let showTemplates = $state(false);
   let showDashboardBuilder = $state(false);
+  let showPluginManager = $state(false);
 
   onMount(() => {
     const src = new URLSearchParams(location.search).get('src') ?? '';
@@ -121,6 +124,18 @@
             <path d="M2 3h12M2 8h12M2 13h7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
           </svg>
         </button>
+
+        {#if store.contract}
+          <button class="icon-btn" class:icon-btn--active={showPluginManager} title="Plugin Manager" onclick={() => showPluginManager = !showPluginManager}>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <rect x="1.5" y="1.5" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/>
+              <rect x="9.5" y="1.5" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/>
+              <rect x="1.5" y="9.5" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.3"/>
+              <circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.3"/>
+              <path d="M12 10.5v1.5M12 13.5v.5M10.5 12h1.5M13.5 12h.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+            </svg>
+          </button>
+        {/if}
       </div>
     </header>
 
@@ -136,6 +151,10 @@
 
   {#if showDashboardBuilder && store.currentBaseUrl}
     <DashboardBuilder baseUrl={store.currentBaseUrl} onclose={() => showDashboardBuilder = false} />
+  {/if}
+
+  {#if showPluginManager}
+    <PluginManager onclose={() => showPluginManager = false} />
   {/if}
 
 {:else}

@@ -8,6 +8,8 @@
     type DiscoveredField,
     type ShelbyPipelineInfo,
   } from '../lib/adapters/shelby';
+  import { listWidgets } from '../lib/widgetRegistry';
+  import '../lib/widgetRegistrations';
   import Scalar from './widgets/Scalar.svelte';
   import Timeseries from './widgets/Timeseries.svelte';
   import StatusGrid from './widgets/StatusGrid.svelte';
@@ -338,18 +340,8 @@
     previewKey ? (previewDataCache[previewKey] ?? null) : null
   );
 
-  // ── Kind metadata ──────────────────────────────────────────────────────────
-
-  const KIND_META: Record<StreamKind, { label: string; color: string; desc: string }> = {
-    timeseries: { label: 'Timeseries',  color: '#22d3ee', desc: 'Line/area chart over time' },
-    scalar:     { label: 'Scalar',      color: '#f59e0b', desc: 'Single value with trend' },
-    status:     { label: 'Status Grid', color: '#34d399', desc: 'Run history dot grid' },
-    table:      { label: 'Table',       color: '#a78bfa', desc: 'Tabular run data' },
-    log:        { label: 'Log Feed',    color: '#34d399', desc: 'Scrollable log lines' },
-    raw:        { label: 'Raw JSON',    color: '#6b7280', desc: 'Inspectable JSON tree' },
-  };
-
-  const KIND_ORDER: StreamKind[] = ['timeseries', 'scalar', 'status', 'table', 'log', 'raw'];
+  const widgetKinds = $derived(listWidgets());
+  const widgetMetaByKind = $derived(Object.fromEntries(widgetKinds.map(w => [w.kind, w.meta])));
 </script>
 
 <div class="backdrop" role="presentation" onclick={() => onclose()}>
@@ -498,7 +490,7 @@
 
         <div class="widget-list">
           {#each draftStreams as s (s.id)}
-            {@const meta = KIND_META[s.kind]}
+            {@const meta = widgetMetaByKind[s.kind] ?? { name: s.kind, icon: '?', compatibleKinds: [s.kind], hasDisplayConfig: false, hasTransformConfig: false }}
             <div
               class="widget-row"
               class:widget-row--active={selectedId === s.id}
@@ -507,24 +499,12 @@
               onclick={() => selectStream(s.id)}
               onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') selectStream(s.id); }}
             >
-              <div class="widget-row-icon" style:background={`${meta.color}18`} style:border-color={`${meta.color}30`}>
-                {#if s.kind === 'timeseries'}
-                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M1 10l3-4.5 2.5 2.5 3-5.5 2 3" stroke={meta.color} stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                {:else if s.kind === 'scalar'}
-                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><text x="1.5" y="10.5" font-size="10" font-weight="700" fill={meta.color} font-family="monospace">#</text></svg>
-                {:else if s.kind === 'status'}
-                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="3" cy="4" r="1.8" fill={meta.color}/><circle cx="7" cy="4" r="1.8" fill={meta.color}/><circle cx="11" cy="4" r="1.8" fill="var(--fail)"/><circle cx="3" cy="9" r="1.8" fill={meta.color}/><circle cx="7" cy="9" r="1.8" fill={meta.color}/><circle cx="11" cy="9" r="1.8" fill={meta.color}/></svg>
-                {:else if s.kind === 'table'}
-                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="1" y="1" width="11" height="11" rx="1.5" stroke={meta.color} stroke-width="1.3"/><path d="M1 4.5h11M4.5 4.5v7.5" stroke={meta.color} stroke-width="1.3"/></svg>
-                {:else if s.kind === 'log'}
-                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 3h9M2 6.5h9M2 10h6" stroke={meta.color} stroke-width="1.4" stroke-linecap="round"/></svg>
-                {:else}
-                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M4 2L2 6.5L4 11M9 2l2 4.5L9 11" stroke={meta.color} stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                {/if}
+              <div class="widget-row-icon" style:background={`rgba(99,102,241,0.1)`} style:border-color={`rgba(99,102,241,0.2)`}>
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><text x="1.5" y="10.5" font-size="10" font-weight="700" fill="#a78bfa" font-family="monospace">{meta.icon}</text></svg>
               </div>
               <div class="widget-row-info">
                 <span class="widget-row-name">{s.label}</span>
-                <span class="widget-row-kind">{meta.label}</span>
+                <span class="widget-row-kind">{meta.name}</span>
               </div>
               <div class="widget-row-span">
                 {#each [1,2,3,4] as b}
@@ -583,40 +563,26 @@
             <div class="editor-section">
               <div class="section-label">Widget type</div>
               <div class="kind-grid">
-                {#each KIND_ORDER as k}
-                  {@const m = KIND_META[k]}
+                {#each widgetKinds as { kind, meta }}
                   <button
                     class="kind-card"
-                    class:kind-card--active={selectedStream.kind === k}
+                    class:kind-card--active={selectedStream.kind === kind}
                     onclick={() => {
-                      patchSelected({ kind: k });
+                      patchSelected({ kind });
                       mappingActive = false;
                       tableMappingActive = false;
-                      // Reset preview cache for this stream
                       const newCache = { ...previewDataCache };
                       for (const key of Object.keys(newCache)) {
                         if (key.startsWith(selectedStream.id + ':')) delete newCache[key];
                       }
                       previewDataCache = newCache;
                     }}
-                    title={m.desc}
+                    title={meta.name}
                   >
-                    <span class="kind-card-icon" style:color={m.color}>
-                      {#if k === 'timeseries'}
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M1 12L5 7l3 3 4-7 2 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                      {:else if k === 'scalar'}
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><text x="2" y="13" font-size="13" font-weight="800" fill="currentColor" font-family="monospace">#</text></svg>
-                      {:else if k === 'status'}
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="3.5" cy="5" r="2" fill="currentColor"/><circle cx="8" cy="5" r="2" fill="currentColor"/><circle cx="12.5" cy="5" r="2" fill="var(--fail)" opacity="0.7"/><circle cx="3.5" cy="11" r="2" fill="currentColor"/><circle cx="8" cy="11" r="2" fill="currentColor"/><circle cx="12.5" cy="11" r="2" fill="currentColor"/></svg>
-                      {:else if k === 'table'}
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="1.5" width="13" height="13" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M1.5 5.5h13M5.5 5.5v9" stroke="currentColor" stroke-width="1.4"/></svg>
-                      {:else if k === 'log'}
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.5 4h11M2.5 8h11M2.5 12h7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-                      {:else}
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M5 2L2.5 8 5 14M11 2l2.5 6L11 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                      {/if}
+                    <span class="kind-card-icon" style:color={'#22d3ee'}>
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><text x="2" y="13" font-size="13" font-weight="800" fill="currentColor" font-family="monospace">{meta.icon}</text></svg>
                     </span>
-                    <span class="kind-card-label">{m.label}</span>
+                    <span class="kind-card-label">{meta.name}</span>
                   </button>
                 {/each}
               </div>
