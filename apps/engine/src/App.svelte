@@ -3,14 +3,14 @@
   import Dashboard from './components/Dashboard.svelte';
   import BeaconLogo from './components/ui/BeaconLogo.svelte';
   import TemplatesPanel from './components/TemplatesPanel.svelte';
-  import ContractBuilder from './components/ContractBuilder.svelte';
+  import DashboardBuilder from './components/DashboardBuilder.svelte';
   import { store } from './lib/store.svelte';
   import { loadMock, startMockLive } from './lib/mock';
   import { connectShelby, connectContract, stopShelby } from './lib/adapters/shelby';
 
   let srcInput = $state('');
   let showTemplates = $state(false);
-  let showContractBuilder = $state(false);
+  let showDashboardBuilder = $state(false);
 
   onMount(() => {
     const src = new URLSearchParams(location.search).get('src') ?? '';
@@ -103,9 +103,9 @@
         {#if store.currentBaseUrl}
           <button
             class="icon-btn"
-            class:icon-btn--active={showContractBuilder}
-            title="Contract Builder"
-            onclick={() => showContractBuilder = !showContractBuilder}
+            class:icon-btn--active={showDashboardBuilder}
+            title="Dashboard Builder"
+            onclick={() => showDashboardBuilder = !showDashboardBuilder}
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <circle cx="4" cy="4" r="1.5" stroke="currentColor" stroke-width="1.3"/>
@@ -134,8 +134,8 @@
     <TemplatesPanel onclose={() => showTemplates = false} />
   {/if}
 
-  {#if showContractBuilder && store.currentBaseUrl}
-    <ContractBuilder baseUrl={store.currentBaseUrl} onclose={() => showContractBuilder = false} />
+  {#if showDashboardBuilder && store.currentBaseUrl}
+    <DashboardBuilder baseUrl={store.currentBaseUrl} onclose={() => showDashboardBuilder = false} />
   {/if}
 
 {:else}
