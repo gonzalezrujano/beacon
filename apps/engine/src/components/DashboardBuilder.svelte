@@ -16,6 +16,10 @@
   import Table from './widgets/Table.svelte';
   import LogFeed from './widgets/LogFeed.svelte';
   import RawJson from './widgets/RawJson.svelte';
+  import CustomWidgetPreview from './CustomWidgetPreview.svelte';
+  import { register } from '../lib/widgetRegistry';
+  import CustomWidgetHost from './widgets/CustomWidgetHost.svelte';
+  import type { WidgetMeta } from '../lib/widgetRegistry';
 
   const { baseUrl, onclose }: { baseUrl: string; onclose: () => void } = $props();
 
@@ -59,6 +63,8 @@
   let mappingActive  = $state(false);
   let tableMappingActive = $state(false);
   let tableMappingHint   = $state(false);
+  let customWidgetActive = $state(false);
+  let customWidgetCode = $state<string | null>(null);
 
   const selectedStream = $derived(draftStreams.find(s => s.id === selectedId) ?? null);
 
@@ -222,6 +228,31 @@
   function getStreamField(s: Stream): string {
     const m = s.endpoint.match(/[?&]field=([^&]+)/);
     return m ? decodeURIComponent(m[1]) : '';
+  }
+
+  function handleCustomWidgetLoad(manifest: unknown, mountFn: unknown) {
+    if (!selectedStream || !manifest || !mountFn) return;
+    const m = manifest as { kind: StreamKind; name: string; icon?: string; compatibleKinds?: StreamKind[] };
+    const meta: WidgetMeta = {
+      name: m.name,
+      icon: m.icon ?? '⚡',
+      compatibleKinds: m.compatibleKinds ?? [m.kind],
+      hasDisplayConfig: false,
+      hasTransformConfig: false,
+    };
+    register(selectedStream.kind, {
+      component: CustomWidgetHost,
+      meta,
+      buildProps: (data, stream, config, thresholds) => ({
+        mountFn,
+        data,
+        stream,
+        config,
+        thresholds,
+      }),
+    });
+    customWidgetCode = 'loaded';
+    setTimeout(() => { customWidgetCode = null; }, 1500);
   }
 
   // ── Mock preview data ──────────────────────────────────────────────────────
@@ -566,9 +597,10 @@
                 {#each widgetKinds as { kind, meta }}
                   <button
                     class="kind-card"
-                    class:kind-card--active={selectedStream.kind === kind}
+                    class:kind-card--active={selectedStream.kind === kind && !customWidgetActive}
                     onclick={() => {
                       patchSelected({ kind });
+                      customWidgetActive = false;
                       mappingActive = false;
                       tableMappingActive = false;
                       const newCache = { ...previewDataCache };
@@ -585,6 +617,17 @@
                     <span class="kind-card-label">{meta.name}</span>
                   </button>
                 {/each}
+                <button
+                  class="kind-card"
+                  class:kind-card--active={customWidgetActive}
+                  onclick={() => { customWidgetActive = true; }}
+                  title="Custom Widget"
+                >
+                  <span class="kind-card-icon" style:color={'#a78bfa'}>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><text x="2" y="13" font-size="13" font-weight="800" fill="currentColor" font-family="monospace">⚡</text></svg>
+                  </span>
+                  <span class="kind-card-label">Custom</span>
+                </button>
               </div>
             </div>
 
@@ -681,28 +724,46 @@
 
           <!-- Preview -->
           <div class="preview-section">
-            <div class="preview-header">
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 6s2-4 5-4 5 4 5 4-2 4-5 4-5-4-5-4z" stroke="currentColor" stroke-width="1.3"/><circle cx="6" cy="6" r="1.5" fill="currentColor"/></svg>
-              Preview
-              <span class="preview-note">sample data</span>
-            </div>
-            <div class="preview-widget">
-              {#if previewData}
-                {#if previewData.kind === 'scalar'}
-                  <Scalar data={previewData} />
-                {:else if previewData.kind === 'timeseries'}
-                  <Timeseries data={previewData} unit={selectedStream.unit} />
-                {:else if previewData.kind === 'status'}
-                  <StatusGrid data={previewData} />
-                {:else if previewData.kind === 'table'}
-                  <Table data={previewData} />
-                {:else if previewData.kind === 'log'}
-                  <LogFeed data={previewData} />
-                {:else if previewData.kind === 'raw'}
-                  <RawJson data={previewData} />
+            {#if customWidgetActive}
+              <div class="preview-header">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 4L1 6l2 2M9 4l2 2-2 2M5 9l2-6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Custom Widget Preview
+                {#if customWidgetCode === 'loaded'}
+                  <span class="preview-note" style="color:#34d399;">Loaded!</span>
+                {:else}
+                  <span class="preview-note">test before loading</span>
                 {/if}
-              {/if}
-            </div>
+              </div>
+              <div class="preview-widget">
+                <CustomWidgetPreview
+                  streamKind={selectedStream.kind}
+                  onLoad={handleCustomWidgetLoad}
+                />
+              </div>
+            {:else}
+              <div class="preview-header">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 6s2-4 5-4 5 4 5 4-2 4-5 4-5-4-5-4z" stroke="currentColor" stroke-width="1.3"/><circle cx="6" cy="6" r="1.5" fill="currentColor"/></svg>
+                Preview
+                <span class="preview-note">sample data</span>
+              </div>
+              <div class="preview-widget">
+                {#if previewData}
+                  {#if previewData.kind === 'scalar'}
+                    <Scalar data={previewData} />
+                  {:else if previewData.kind === 'timeseries'}
+                    <Timeseries data={previewData} unit={selectedStream.unit} />
+                  {:else if previewData.kind === 'status'}
+                    <StatusGrid data={previewData} />
+                  {:else if previewData.kind === 'table'}
+                    <Table data={previewData} />
+                  {:else if previewData.kind === 'log'}
+                    <LogFeed data={previewData} />
+                  {:else if previewData.kind === 'raw'}
+                    <RawJson data={previewData} />
+                  {/if}
+                {/if}
+              </div>
+            {/if}
           </div>
 
         {:else}
